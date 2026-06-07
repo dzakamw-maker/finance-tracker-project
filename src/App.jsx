@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabaseClient'
+import { useAuth } from './contexts/AuthContext'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useToast } from './hooks/useToast'
 import ThemeToggle from './components/ThemeToggle'
 import SummaryCards from './components/SummaryCards'
@@ -10,9 +12,22 @@ import TransactionChart from './components/TransactionChart'
 import EditModal from './components/EditModal'
 import DeleteModal from './components/DeleteModal'
 import Settings from './components/Settings'
+import Auth from './pages/Auth'
+import AdminDashboard from './pages/AdminDashboard'
+import { LogOut, PieChart, Wallet, Plane, Landmark } from 'lucide-react'
+import RecordSelector from './components/RecordSelector'
+import DebtForm from './components/DebtForm'
+import DebtList from './components/DebtList'
+import ItineraryForm from './components/ItineraryForm'
+import ItineraryList from './components/ItineraryList'
 
-function App() {
+// Main Dashboard Component (previously the entire App content)
+const UserDashboard = () => {
+  const { session, signOut } = useAuth();
+  const navigate = useNavigate();
   const [transactions, setTransactions] = useState([])
+  const [debts, setDebts] = useState([])
+  const [itineraries, setItineraries] = useState([])
   const [loading, setLoading] = useState(true)
   const [editingTransaction, setEditingTransaction] = useState(null)
   const [transactionToDelete, setTransactionToDelete] = useState(null)
@@ -21,12 +36,14 @@ function App() {
   const [categories, setCategories] = useState([])
   const [subcategories, setSubcategories] = useState([])
   const [showSettings, setShowSettings] = useState(false)
+  const [activeTab, setActiveTab] = useState('savings') // 'savings', 'debts', 'itinerary'
   const { toasts, showToast, dismissToast } = useToast()
 
   const refreshData = async () => {
+    if (!session?.user?.id) return;
     setLoading(true)
     try {
-      // 1. Fetch transactions with joined data for display
+      // 1. Fetch transactions with joined data for display (Filtered by RLS)
       const txRes = await supabase
         .from('transactions')
         .select(`
@@ -35,9 +52,27 @@ function App() {
           categories(name, type),
           subcategories(name)
         `)
+        .eq('user_id', session.user.id)
         .order('date', { ascending: false })
 
-      // 2. Fetch reference data for the forms
+      // 2. Fetch debts
+      const debtRes = await supabase
+        .from('debts')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+
+      // 3. Fetch itineraries with items
+      const itineraryRes = await supabase
+        .from('itineraries')
+        .select(`
+          *,
+          itinerary_items(*)
+        `)
+        .eq('user_id', session.user.id)
+        .order('planned_date', { ascending: true })
+
+      // 4. Fetch reference data for the forms
       const [pmRes, catRes, subRes] = await Promise.all([
         supabase.from('payment_methods').select('*').order('name'),
         supabase.from('categories').select('*').order('type'),
@@ -45,11 +80,15 @@ function App() {
       ])
 
       if (txRes.error) throw txRes.error
+      if (debtRes.error) throw debtRes.error
+      if (itineraryRes.error) throw itineraryRes.error
       if (pmRes.error) throw pmRes.error
       if (catRes.error) throw catRes.error
       if (subRes.error) throw subRes.error
 
       setTransactions(txRes.data || [])
+      setDebts(debtRes.data || [])
+      setItineraries(itineraryRes.data || [])
       setPaymentMethods(pmRes.data || [])
       setCategories(catRes.data || [])
       setSubcategories(subRes.data || [])
@@ -86,9 +125,14 @@ function App() {
     }
   }
 
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/login');
+  };
+
   useEffect(() => {
     refreshData()
-  }, [])
+  }, [session])
 
   return (
     <div className="min-h-screen transition-colors duration-300" style={{ backgroundColor: 'var(--bg-primary)' }}>
@@ -119,7 +163,7 @@ function App() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* ===== HEADER ===== */}
-        <header className="flex items-center justify-between mb-8 animate-fade-in">
+        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 animate-fade-in gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary-600 text-white flex items-center justify-center text-xl shadow-md">
               💸
@@ -133,7 +177,8 @@ function App() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          
+          <div className="flex items-center gap-3 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0">
             <button
               onClick={() => setShowSettings(!showSettings)}
               className="p-2 rounded-xl border hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer flex items-center gap-2"
@@ -143,6 +188,14 @@ function App() {
               ⚙️ <span className="text-sm font-semibold hidden sm:inline">Pengaturan</span>
             </button>
             <ThemeToggle />
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-700 mx-2"></div>
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-2 whitespace-nowrap"
+              title="Logout"
+            >
+              <LogOut size={18} /> <span className="text-sm font-medium hidden sm:inline">Logout</span>
+            </button>
           </div>
         </header>
 
@@ -152,7 +205,7 @@ function App() {
           <>
             {/* ===== SUMMARY CARDS ===== */}
             <section className="mb-8">
-              <SummaryCards transactions={transactions} />
+              <SummaryCards transactions={transactions} debts={debts} itineraries={itineraries} />
             </section>
 
             {/* ===== MAIN CONTENT GRID ===== */}
@@ -170,25 +223,60 @@ function App() {
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-                {/* Sidebar: Form */}
+                {/* Sidebar: Form Selection & Forms */}
                 <div className="lg:col-span-1 space-y-6">
-                  <TransactionForm 
-                    onSuccess={refreshData} 
-                    showToast={showToast} 
-                    paymentMethods={paymentMethods}
-                    categories={categories}
-                    subcategories={subcategories}
-                  />
+                  <RecordSelector activeTab={activeTab} onTabChange={setActiveTab} />
+                  
+                  {activeTab === 'savings' && (
+                    <TransactionForm 
+                      onSuccess={refreshData} 
+                      showToast={showToast} 
+                      paymentMethods={paymentMethods}
+                      categories={categories}
+                      subcategories={subcategories}
+                    />
+                  )}
+                  {activeTab === 'debts' && (
+                    <DebtForm 
+                      onSuccess={refreshData} 
+                      showToast={showToast} 
+                    />
+                  )}
+                  {activeTab === 'itinerary' && (
+                    <ItineraryForm 
+                      onSuccess={refreshData} 
+                      showToast={showToast} 
+                    />
+                  )}
                 </div>
 
-                {/* Main: Chart + List */}
+                {/* Main: Charts + Lists */}
                 <div className="lg:col-span-2 space-y-6">
-                  <TransactionChart data={transactions} />
-                  <TransactionList
-                    data={transactions}
-                    onDelete={handleDeleteRequest}
-                    onEdit={(item) => setEditingTransaction(item)}
-                  />
+                  {activeTab === 'savings' ? (
+                    <>
+                      <TransactionChart data={transactions} />
+                      <TransactionList
+                        data={transactions}
+                        onDelete={handleDeleteRequest}
+                        onEdit={(item) => setEditingTransaction(item)}
+                      />
+                    </>
+                  ) : activeTab === 'debts' ? (
+                    <DebtList 
+                      data={debts} 
+                      onSuccess={refreshData} 
+                      showToast={showToast}
+                      paymentMethods={paymentMethods}
+                      categories={categories}
+                      subcategories={subcategories}
+                    />
+                  ) : (
+                    <ItineraryList
+                      data={itineraries}
+                      onSuccess={refreshData}
+                      showToast={showToast}
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -203,6 +291,62 @@ function App() {
         )}
       </div>
     </div>
+  )
+}
+
+function App() {
+  const { session, userRole, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg-primary)' }}>
+        <div className="animate-spin h-8 w-8 border-4 border-primary-500 border-t-transparent rounded-full"></div>
+      </div>
+    );
+  }
+
+  return (
+    <Routes>
+      {/* Public Route */}
+      <Route 
+        path="/login" 
+        element={
+          session ? (
+            userRole === 'admin' ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />
+          ) : (
+            <Auth />
+          )
+        } 
+      />
+      
+      {/* Protected User Route */}
+      <Route 
+        path="/dashboard" 
+        element={session ? <UserDashboard /> : <Navigate to="/login" replace />} 
+      />
+
+      {/* Protected Admin Route */}
+      <Route 
+        path="/admin" 
+        element={
+          session && userRole === 'admin' ? (
+            <AdminDashboard />
+          ) : (
+            <Navigate to="/dashboard" replace />
+          )
+        } 
+      />
+
+      {/* Default Route */}
+      <Route 
+        path="/" 
+        element={
+          !session ? <Navigate to="/login" replace /> :
+          userRole === 'admin' ? <Navigate to="/admin" replace /> : 
+          <Navigate to="/dashboard" replace />
+        } 
+      />
+    </Routes>
   )
 }
 

@@ -1,4 +1,4 @@
-export default function SummaryCards({ transactions }) {
+export default function SummaryCards({ transactions, debts = [], itineraries = [] }) {
   const totalIncome = transactions
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0)
@@ -8,6 +8,19 @@ export default function SummaryCards({ transactions }) {
     .reduce((sum, t) => sum + t.amount, 0)
 
   const netBalance = totalIncome - totalExpense
+
+  // Future Expenses = Unpaid Debts + Itinerary Items
+  const unpaidDebt = debts
+    .filter(d => d.status === 'unpaid')
+    .reduce((sum, d) => sum + Number(d.amount), 0)
+
+  const itineraryBudget = itineraries
+    .reduce((sum, it) => {
+      const itemsSum = it.itinerary_items?.reduce((s, item) => s + Number(item.estimated_amount), 0) || 0
+      return sum + itemsSum
+    }, 0)
+
+  const futureExpenses = unpaidDebt + itineraryBudget
 
   const cards = [
     {
@@ -43,10 +56,19 @@ export default function SummaryCards({ transactions }) {
         : 'border-red-200 dark:border-red-500/20',
       prefix: netBalance >= 0 ? '+' : '-',
     },
+    {
+      label: 'Future Expenses',
+      amount: futureExpenses,
+      icon: '⏳',
+      colorClass: 'text-amber-600 dark:text-amber-400',
+      bgClass: 'bg-amber-50 dark:bg-amber-500/10',
+      borderClass: 'border-amber-200 dark:border-amber-500/20',
+      prefix: '',
+    },
   ]
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((card, i) => (
         <div
           key={card.label}

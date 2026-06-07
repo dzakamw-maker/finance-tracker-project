@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function EditModal({ transaction, onClose, onSuccess, showToast, paymentMethods, categories, subcategories }) {
+  const { session } = useAuth()
   const [amount, setAmount] = useState(transaction.amount.toString())
   const [type, setType] = useState(transaction.type)
   const [paymentMethodId, setPaymentMethodId] = useState(transaction.payment_method_id || '')
@@ -53,6 +55,7 @@ export default function EditModal({ transaction, onClose, onSuccess, showToast, 
     const { data, error } = await supabase
       .from('transactions')
       .update({
+        user_id: session?.user?.id,
         amount: parseFloat(amount),
         type,
         payment_method_id: paymentMethodId,

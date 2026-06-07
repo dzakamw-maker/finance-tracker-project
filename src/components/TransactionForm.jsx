@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function TransactionForm({ onSuccess, showToast, paymentMethods, categories, subcategories }) {
+  const { session } = useAuth()
   const [amount, setAmount] = useState('')
   const [type, setType] = useState('outcome')
 
@@ -43,6 +45,7 @@ export default function TransactionForm({ onSuccess, showToast, paymentMethods, 
       .from('transactions')
       .insert([
         {
+          user_id: session?.user?.id,
           amount: parseFloat(amount),
           type,
           payment_method_id: paymentMethodId,

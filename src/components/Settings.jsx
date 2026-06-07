@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function Settings({ showToast, onBack }) {
+  const { session } = useAuth()
   const [activeTab, setActiveTab] = useState('payment_methods') // 'payment_methods', 'categories', 'subcategories'
   const [loading, setLoading] = useState(true)
   const [paymentMethods, setPaymentMethods] = useState([])
@@ -52,7 +54,7 @@ export default function Settings({ showToast, onBack }) {
     if (!newMethodName.trim()) return
     
     const { error } = await supabase.from('payment_methods').insert([
-      { name: newMethodName.trim(), method_type: newMethodType }
+      { name: newMethodName.trim(), method_type: newMethodType, user_id: session?.user?.id }
     ])
 
     if (error) showToast('Gagal: ' + error.message, 'error')
@@ -68,7 +70,7 @@ export default function Settings({ showToast, onBack }) {
     if (!newCategoryName.trim()) return
 
     const { error } = await supabase.from('categories').insert([
-      { name: newCategoryName.trim(), type: newCategoryType }
+      { name: newCategoryName.trim(), type: newCategoryType, user_id: session?.user?.id }
     ])
 
     if (error) showToast('Gagal: ' + error.message, 'error')
@@ -87,7 +89,7 @@ export default function Settings({ showToast, onBack }) {
     }
 
     const { error } = await supabase.from('subcategories').insert([
-      { name: newSubcategoryName.trim(), category_id: selectedCategoryId }
+      { name: newSubcategoryName.trim(), category_id: selectedCategoryId, user_id: session?.user?.id }
     ])
 
     if (error) showToast('Gagal: ' + error.message, 'error')
